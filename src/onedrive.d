@@ -515,6 +515,7 @@ class OneDriveApi {
 			// There are 2 options here for normal authentication flow
 			// 1. Use OAuth2 Device Authorisation Flow
 			// 2. Use OAuth2 Interactive Authorisation Flow (application default)
+			string authoriseApplicationRequest = "Please authorise this application by visiting the following URL:\n";
 			
 			if (appConfig.getValueBool("use_device_auth")) {
 				// Use OAuth2 Device Authorisation Flow
@@ -540,7 +541,7 @@ class OneDriveApi {
 					
 					// Display the required items for the user to action
 					addLogEntry();
-					addLogEntry("Authorise this application by visiting:\n", ["consoleOnly"]);
+					addLogEntry(authoriseApplicationRequest, ["consoleOnly"]);
 					addLogEntry(deviceAuthUrl ~ "\n", ["consoleOnly"]);
 					addLogEntry("Enter the following code when prompted: " ~ userCode, ["consoleOnly"]);
 					addLogEntry();
@@ -695,14 +696,21 @@ class OneDriveApi {
 						return false;
 					}
 				} else {
-					// Are we in a --dry-run scenario?
+					// If we are not running in --dry-run mode, prompt the user to authorise the application
 					if (!appConfig.getValueBool("dry_run")) {
-						// No --dry-run is being used
-						addLogEntry("Authorise this application by visiting:\n", ["consoleOnly"]);
+						// Notify the user of the next step: visit the URL to authorise the client
+						addLogEntry();
+						addLogEntry(authoriseApplicationRequest, ["consoleOnly"]);
 						addLogEntry(url ~ "\n", ["consoleOnly"]);
-						addLogEntry("Enter the response uri from your browser: ", ["consoleOnlyNoNewLine"]);
+						
+						// Prompt the user to paste the full redirect URI (copied from the browser after login)
+						addLogEntry("After completing the authorisation in your browser, copy the full redirect URI (from the address bar) and paste it below.\n", ["consoleOnly"]);
+						addLogEntry("Paste redirect URI here: ", ["consoleOnlyNoNewLine"]);
+						
+						// Read the user's pasted response URI
 						readln(response);
-						appConfig.applicationAuthorizeResponseUri = true;
+						// Flag that a response URI has been received - at this point could be valid or invalid
+						appConfig.applicationAuthoriseResponseURIReceived = true;
 					} else {
 						// The application cannot be authorised when using --dry-run as we have to write out the authentication data, which negates the whole 'dry-run' process
 						addLogEntry();
@@ -1555,6 +1563,7 @@ class OneDriveApi {
 		SysTime retryTime;
 		bool retrySuccess = false;
 		bool transientError = false;
+		bool sslVerifyPeerDisabled = false;
 		
 		while (!retrySuccess) {
 			// Reset thisBackOffInterval
@@ -1686,8 +1695,9 @@ class OneDriveApi {
 						//  https://stackoverflow.com/questions/45829588/brew-install-fails-curl77-error-setting-certificate-verify
 						//  https://forum.dlang.org/post/vwvkbubufexgeuaxhqfl@forum.dlang.org
 						
-						addLogEntry("Problem with reading the local SSL CA cert via libcurl - please repair your system SSL CA Certificates");
-						throw new OneDriveError("OneDrive operation encountered an issue with libcurl reading the local SSL CA Certificates");
+						string sslCertReadErrorMessage = "System SSL CA certificates are missing or unreadable by libcurl – please ensure the correct CA bundle is installed and is accessible.";
+						addLogEntry("ERROR: " ~ sslCertReadErrorMessage);
+						throw new OneDriveError(sslCertReadErrorMessage);
 					} else {
 						// Was this a curl initialization error?
 						if (canFind(errorMessage, "Failed initialization on handle")) {
@@ -1809,6 +1819,30 @@ class OneDriveApi {
 				// display the error message
 				displayFileSystemErrorMessage(exception.msg, callingFunction);
 				throw new OneDriveException(0, "There was a file system error during OneDrive request: " ~ exception.msg, response);
+			
+			// A OneDriveError was thrown
+			} catch (OneDriveError exception) {
+				// Disk space error or SSL error caused a OneDriveError to be thrown
+				
+				/**
+				
+				DO NOT UNCOMMENT THIS CODE UNLESS TESTING FOR THIS ISSUE: System SSL CA certificates are missing or unreadable by libcurl
+				
+				// Disk space error or SSL error
+				if (getAvailableDiskSpace(".") == 0) {
+					// Must exit
+					forceExit();
+				} else {
+					// Catch the SSL error
+					addLogEntry("WARNING: Disabling SSL peer verification due to libcurl failing to access the system CA certificate bundle (CAfile missing, unreadable, or misconfigured).");
+					sslVerifyPeerDisabled = true;
+					curlEngine.setDisableSSLVerifyPeer();
+				}
+				
+				**/
+				
+				// Must exit
+				forceExit();
 			}
 
 			// Increment re-try counter
@@ -1859,6 +1893,11 @@ class OneDriveApi {
 				// Thread sleep
 				Thread.sleep(dur!"seconds"(thisBackOffInterval));
 			}
+		}
+		
+		// Reset SSL Peer Validation if it was disabled
+		if (sslVerifyPeerDisabled) {
+			curlEngine.setEnableSSLVerifyPeer();
 		}
 		
 		// Return the result
