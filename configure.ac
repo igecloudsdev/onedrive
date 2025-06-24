@@ -10,7 +10,7 @@ dnl - commit the changed files (configure.ac, configure)
 dnl - tag the release
 
 AC_PREREQ([2.69])
-AC_INIT([onedrive],[v2.5.5], [https://github.com/abraunegg/onedrive], [onedrive])
+AC_INIT([onedrive],[v2.5.6], [https://github.com/abraunegg/onedrive], [onedrive])
 AC_CONFIG_SRCDIR([src/main.d])
 
 
@@ -21,7 +21,7 @@ dnl necessary programs: install, pkg-config
 AC_PROG_INSTALL
 PKG_PROG_PKG_CONFIG
 
-PACKAGE_DATE="May 2025"
+PACKAGE_DATE="June 2025"
 AC_SUBST([PACKAGE_DATE])
 
 dnl Determine D compiler
@@ -108,7 +108,7 @@ case $(basename $DC) in
 		# remove everything after ):
 		VERSION=${VERSION%%):*}
 		# now version should be something like L.M.N
-		MINVERSION=1.18.0
+		MINVERSION=1.20.1
 		;;
 	*gdmd*|*gdc*)
 		# Both gdmd and gdc print the same version information
@@ -131,7 +131,7 @@ case $(basename $DC) in
 		VERSION=${VERSION#*Compiler v}
 		VERSION=${VERSION%% *}
 		# now version should be something like L.M.N
-		MINVERSION=2.088.0
+		MINVERSION=2.091.1
 		;;
 esac
 
